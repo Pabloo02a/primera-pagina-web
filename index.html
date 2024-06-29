@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualización de Audio</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        #waveformChart, #spectrumChart {
+            width: 100%;
+            height: 400px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Subir y Visualizar Audio WAV</h1>
+    <input type="file" id="audioFile" accept="audio/wav">
+    <div>
+        <label for="cutoffFrequency">Frecuencia de corte (Hz): </label>
+        <input type="number" id="cutoffFrequency" value="1000">
+        <button id="lowPassFilterButton">Aplicar Filtro Pasa Baja</button>
+    </div>
+    <div>
+        <button id="playButton">Reproducir</button>
+        <button id="stopButton">Detener</button>
+    </div>
+    <canvas id="waveformChart"></canvas>
+    <canvas id="spectrumChart"></canvas>
+    <script>
+        let audioContext, source, analyser, filter;
+        const waveformCanvas = document.getElementById('waveformChart');
+        const spectrumCanvas = document.getElementById('spectrumChart');
+
+        let waveformChart = new Chart(waveformCanvas, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Forma de Onda',
+                    data: [],
+                    borderColor: 'rgba(0, 123, 255, 1)',
+                    borderWidth: 1,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                scales: {
+                    x: { display: false },
+                    y: { display: false }
+                }
+            }
+        });
+
+        let spectrumChart = new Chart(spectrumCanvas, {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Espectro de Frecuencia',
+                    data: [],
+                    backgroundColor: 'rgba(0, 123, 255, 1)',
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                scales: {
+                    x: { display: false },
+                    y: { display: false }
+                }
+            }
+        });
+
+        document.getElementById('audioFile').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (audioContext) {
+                audioContext.close();
+            }
+
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const fileReader = new FileReader();
+
+            fileReader.onload = function() {
+                audioContext.decodeAudioData(fileReader.result, function(buffer) {
+                    visualizeAudio(buffer);
+                });
+            };
+
+            fileReader.readAsArrayBuffer(file);
+        });
+
+        document.getElementById('lowPassFilterButton').addEventListener('click', function() {
+            const cutoffFrequency = document.getElementById('cutoffFrequency').value;
+            if (!filter) {
+                filter = audioContext.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(cutoffFrequency, audioContext.currentTime);
+
+                source.disconnect();
+                source.connect(filter);
+                filter.connect(analyser);
+                analyser.connect(audioContext.destination);
+            } else {
+                filter.frequency.setValueAtTime(cutoffFrequency, audioContext.currentTime);
+            }
+        });
+
+        document.getElementById('playButton').addEventListener('click', function() {
+            if (source) {
+                source.start();
+            }
+        });
+
+        document.getElementById('stopButton').addEventListener('click', function() {
+            if (source) {
+                source.stop();
+                source = null;
+            }
+        });
+
+        function visualizeAudio(buffer) {
+            source = audioContext.createBufferSource();
+            source.buffer = buffer;
+
+            analyser = audioContext.createAnalyser();
+            source.connect(analyser);
+            analyser.connect(audioContext.destination);
+
+            analyser.fftSize = 2048;
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            const timeDomainArray = new Uint8Array(analyser.fftSize);
+
+            const drawWaveform = () => {
+                analyser.getByteTimeDomainData(timeDomainArray);
+
+                const waveformData = Array.from(timeDomainArray).map((value, index) => ({ x: index, y: value - 128 }));
+                waveformChart.data.labels = waveformData.map(point => point.x);
+                waveformChart.data.datasets[0].data = waveformData;
+                waveformChart.update();
+
+                requestAnimationFrame(drawWaveform);
+            };
+
+            const drawSpectrum = () => {
+                analyser.getByteFrequencyData(dataArray);
+
+                const spectrumData = Array.from(dataArray).map((value, index) => ({ x: index, y: value }));
+                spectrumChart.data.labels = spectrumData.map(point => point.x);
+                spectrumChart.data.datasets[0].data = spectrumData;
+                spectrumChart.update();
+
+                requestAnimationFrame(drawSpectrum);
+            };
+
+            drawWaveform();
+            drawSpectrum();
+        }
+    </script>
+</body>
+</html>
