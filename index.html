@@ -6,8 +6,14 @@
     <title>Visualización de Audio</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        #waveformChart, #spectrumChart {
+        .chart-container {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 20px;
             width: 100%;
+        }
+        .chart-column {
+            width: 45%;
             height: 400px;
         }
     </style>
@@ -16,18 +22,29 @@
     <h1>Subir y Visualizar Audio WAV</h1>
     <input type="file" id="audioFile" accept="audio/wav">
     <div>
-        <label for="cutoffFrequency">Frecuencia de corte (Hz): </label>
-        <input type="number" id="cutoffFrequency" value="1000">
+        <label for="cutoffFrequencyLow">Frecuencia de corte para Pasa Baja (Hz): </label>
+        <input type="number" id="cutoffFrequencyLow" value="1000">
         <button id="lowPassFilterButton">Aplicar Filtro Pasa Baja</button>
+    </div>
+    <div>
+        <label for="cutoffFrequencyHigh">Frecuencia de corte para Pasa Alta (Hz): </label>
+        <input type="number" id="cutoffFrequencyHigh" value="1000">
+        <button id="highPassFilterButton">Aplicar Filtro Pasa Alta</button>
     </div>
     <div>
         <button id="playButton">Reproducir</button>
         <button id="stopButton">Detener</button>
     </div>
-    <canvas id="waveformChart"></canvas>
-    <canvas id="spectrumChart"></canvas>
+    <div class="chart-container">
+        <div class="chart-column">
+            <canvas id="waveformChart"></canvas>
+        </div>
+        <div class="chart-column">
+            <canvas id="spectrumChart"></canvas>
+        </div>
+    </div>
     <script>
-        let audioContext, source, analyser, filter;
+        let audioContext, source, analyser, lowPassFilter, highPassFilter;
         const waveformCanvas = document.getElementById('waveformChart');
         const spectrumCanvas = document.getElementById('spectrumChart');
 
@@ -36,7 +53,7 @@
             data: {
                 labels: [],
                 datasets: [{
-                    label: 'Forma de Onda',
+                    label: 'Forma de Onda ',
                     data: [],
                     borderColor: 'rgba(0, 123, 255, 1)',
                     borderWidth: 1,
@@ -74,9 +91,7 @@
             const file = event.target.files[0];
             if (!file) return;
 
-            if (audioContext) {
-                audioContext.close();
-            }
+            resetAudioContext();
 
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
             const fileReader = new FileReader();
@@ -91,18 +106,34 @@
         });
 
         document.getElementById('lowPassFilterButton').addEventListener('click', function() {
-            const cutoffFrequency = document.getElementById('cutoffFrequency').value;
-            if (!filter) {
-                filter = audioContext.createBiquadFilter();
-                filter.type = 'lowpass';
-                filter.frequency.setValueAtTime(cutoffFrequency, audioContext.currentTime);
+            const cutoffFrequency = document.getElementById('cutoffFrequencyLow').value;
+            if (!lowPassFilter) {
+                lowPassFilter = audioContext.createBiquadFilter();
+                lowPassFilter.type = 'lowpass';
+                lowPassFilter.frequency.setValueAtTime(cutoffFrequency, audioContext.currentTime);
 
                 source.disconnect();
-                source.connect(filter);
-                filter.connect(analyser);
+                source.connect(lowPassFilter);
+                lowPassFilter.connect(analyser);
                 analyser.connect(audioContext.destination);
             } else {
-                filter.frequency.setValueAtTime(cutoffFrequency, audioContext.currentTime);
+                lowPassFilter.frequency.setValueAtTime(cutoffFrequency, audioContext.currentTime);
+            }
+        });
+
+        document.getElementById('highPassFilterButton').addEventListener('click', function() {
+            const cutoffFrequency = document.getElementById('cutoffFrequencyHigh').value;
+            if (!highPassFilter) {
+                highPassFilter = audioContext.createBiquadFilter();
+                highPassFilter.type = 'highpass';
+                highPassFilter.frequency.setValueAtTime(cutoffFrequency, audioContext.currentTime);
+
+                source.disconnect();
+                source.connect(highPassFilter);
+                highPassFilter.connect(analyser);
+                analyser.connect(audioContext.destination);
+            } else {
+                highPassFilter.frequency.setValueAtTime(cutoffFrequency, audioContext.currentTime);
             }
         });
 
@@ -118,6 +149,18 @@
                 source = null;
             }
         });
+
+        function resetAudioContext() {
+            if (audioContext) {
+                audioContext.close();
+            }
+            if (source) {
+                source.stop();
+            }
+            source = null;
+            lowPassFilter = null;
+            highPassFilter = null;
+        }
 
         function visualizeAudio(buffer) {
             source = audioContext.createBufferSource();
