@@ -3,302 +3,304 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Visualización de Audio</title>
-    <!-- Incluimos la librería Chart.js para gráficos -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>Visualizador de Audio en Tiempo Real con Filtros</title>
     <style>
-        /* Estilos CSS para el diseño de la página */
-        .chart-container {
-            display: flex;
-            justify-content: space-around;
-            margin-bottom: 20px;
-            width: 100%;
+        body {
+            background-color: #a698d6;
+            margin: 20px;
+            font-family: Arial, sans-serif;
         }
-        .chart-column {
-            width: 45%;
-            height: 400px;
+
+        h1 {
+            text-align: center;
+        }
+
+        .canvas-container {
+            display: flex;
+            justify-content: center;
+        }
+
+        .canvas-container > div {
+            margin: 10px;
+            text-align: center;
+        }
+
+        canvas {
+            border: 1px solid rgb(255, 0, 0);
+        }
+
+        .filter-control {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            justify-content: center;
+        }
+
+        .filter-control input[type="number"] {
+            margin-right: 10px;
+        }
+
+        button {
+            margin-left: 10px;
         }
     </style>
 </head>
 <body>
-    <h1>Subir y Visualizar Audio WAV</h1>
-    <!-- Input para subir archivo de audio WAV -->
-    <input type="file" id="audioFile" accept="audio/wav">
-    <!-- Controles para filtro Pasa Baja -->
-    <div>
-        <label for="cutoffFrequencyLow">Frecuencia de corte para Pasa Baja (Hz): </label>
-        <input type="number" id="cutoffFrequencyLow" value="1000">
-        <button id="lowPassFilterButton">Aplicar Filtro Pasa Baja</button>
-    </div>
-    <!-- Controles para filtro Pasa Alta -->
-    <div>
-        <label for="cutoffFrequencyHigh">Frecuencia de corte para Pasa Alta (Hz): </label>
-        <input type="number" id="cutoffFrequencyHigh" value="1000">
-        <button id="highPassFilterButton">Aplicar Filtro Pasa Alta</button>
-    </div>
-    <!-- Botones de reproducción y detención -->
-    <div>
-        <button id="playButton">Reproducir</button>
-        <button id="stopButton">Detener</button>
-    </div>
-    <!-- Contenedores para los gráficos -->
-    <div class="chart-container">
-        <div class="chart-column">
-            <canvas id="waveformChart"></canvas>
-        </div>
-        <div class="chart-column">
-            <canvas id="spectrumChart"></canvas>
-        </div>
-    </div>
-    <!-- Nuevas gráficas para la forma total del audio y el espectro de toda la música -->
-    <div class="chart-container">
-        <div class="chart-column">
-            <canvas id="totalWaveformChart"></canvas>
-        </div>
-        <div class="chart-column">
-            <canvas id="totalSpectrumChart"></canvas>
-        </div>
+    <h1>Visualizador de Audio en Tiempo Real</h1>
+    <input type="file" id="audioUpload" accept=".wav">
+    <button id="playButton" disabled>Reproducir</button>
+    <button id="stopButton" disabled>Detener</button>
+
+    <div class="filter-control">
+        <input type="number" id="lowpassCutoff" placeholder="Frecuencia de corte para pasa bajos (Hz)">
+        <button id="applyLowpassButton" disabled>Aplicar Filtro Pasa Bajos</button>
     </div>
 
+    <div class="filter-control">
+        <input type="number" id="highpassCutoff" placeholder="Frecuencia de corte para pasa altos (Hz)">
+        <button id="applyHighpassButton" disabled>Aplicar Filtro Pasa Altos</button>
+    </div>
+
+    <div class="filter-control">
+        <input type="number" id="iirFrequency" placeholder="Frecuencia de corte para filtro IIR pasa bajos (Hz)">
+        <button id="applyIIRLowpassButton" disabled>Aplicar Filtro IIR Pasa Bajos</button>
+    </div>
+
+    <div class="filter-control">
+        <input type="number" id="iirHighpassFrequency" placeholder="Frecuencia de corte para filtro IIR pasa altos (Hz)">
+        <button id="applyIIRHighpassButton" disabled>Aplicar Filtro IIR Pasa Altos</button>
+    </div>
+
+    <div class="canvas-container">
+        <div>
+            <canvas id="waveformCanvas" width="400" height="200"></canvas>
+            <p>Forma de Onda</p>
+        </div>
+        <div>
+            <canvas id="fftCanvas" width="400" height="200"></canvas>
+            <p>Espectro FFT</p>
+        </div>
+    </div>
     <script>
-        // Declaración de variables para el contexto de audio y gráficos
-        let audioContext, source, analyser, lowPassFilter, highPassFilter;
-        const waveformCanvas = document.getElementById('waveformChart');
-        const spectrumCanvas = document.getElementById('spectrumChart');
-        const totalWaveformCanvas = document.getElementById('totalWaveformChart');
-        const totalSpectrumCanvas = document.getElementById('totalSpectrumChart');
+        const audioUpload = document.getElementById('audioUpload');
+        const playButton = document.getElementById('playButton');
+        const stopButton = document.getElementById('stopButton');
+        const lowpassCutoffInput = document.getElementById('lowpassCutoff');
+        const applyLowpassButton = document.getElementById('applyLowpassButton');
+        const highpassCutoffInput = document.getElementById('highpassCutoff');
+        const applyHighpassButton = document.getElementById('applyHighpassButton');
+        const iirLowpassFrequencyInput = document.getElementById('iirFrequency');
+        const applyIIRLowpassButton = document.getElementById('applyIIRLowpassButton');
+        const iirHighpassFrequencyInput = document.getElementById('iirHighpassFrequency');
+        const applyIIRHighpassButton = document.getElementById('applyIIRHighpassButton');
+        const waveformCanvas = document.getElementById('waveformCanvas');
+        const fftCanvas = document.getElementById('fftCanvas');
+        const waveformContext = waveformCanvas.getContext('2d');
+        const fftContext = fftCanvas.getContext('2d');
 
-        // Configuración del gráfico de forma de onda
-        let waveformChart = new Chart(waveformCanvas, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Forma de Onda ',
-                    data: [],
-                    borderColor: 'rgba(255, 0, 0, 1)',
-                    borderWidth: 1,
-                    pointRadius: 0
-                }]
-            },
-            options: {
-                scales: {
-                    x: { display: false },
-                    y: { display: false }
-                }
-            }
-        });
+        let audioContext;
+        let source;
+        let analyser;
+        let lowpassFilter;
+        let highpassFilter;
+        let iirLowpassFilter;
+        let iirHighpassFilter;
+        let audioBuffer;
+        let animationId;
 
-        // Configuración del gráfico de espectro de frecuencia
-        let spectrumChart = new Chart(spectrumCanvas, {
-            type: 'bar',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Espectro de Frecuencia',
-                    data: [],
-                    backgroundColor: 'rgba(0, 123, 255, 1)',
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                scales: {
-                    x: { display: false },
-                    y: { display: false }
-                }
-            }
-        });
-
-        // Configuración del gráfico de forma total del audio
-        let totalWaveformChart = new Chart(totalWaveformCanvas, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Forma Total del Audio',
-                    data: [],
-                    borderColor: 'rgba(255, 0, 0, 1)', // Color rojo
-                    borderWidth: 1,
-                    pointRadius: 0
-                }]
-            },
-            options: {
-                scales: {
-                    x: { display: false },
-                    y: { display: false }
-                }
-            }
-        });
-
-        // Configuración del gráfico de espectro de toda la música
-        let totalSpectrumChart = new Chart(totalSpectrumCanvas, {
-            type: 'bar',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Espectro de Toda la Música',
-                    data: [],
-                    backgroundColor: 'rgba(255, 0, 0, 1)', // Color rojo
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                scales: {
-                    x: { display: false },
-                    y: { display: false }
-                }
-            }
-        });
-
-        // Evento cuando se selecciona un archivo de audio
-        document.getElementById('audioFile').addEventListener('change', function(event) {
+        audioUpload.addEventListener('change', function(event) {
             const file = event.target.files[0];
-            if (!file) return;
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const arrayBuffer = e.target.result;
+                    initializeAudio(arrayBuffer);
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        });
 
-            resetAudioContext();
+        playButton.addEventListener('click', function() {
+            playAudio();
+        });
 
-            // Creación de contexto de audio y decodificación del archivo
+        stopButton.addEventListener('click', function() {
+            stopAudio();
+        });
+
+        applyLowpassButton.addEventListener('click', function() {
+            applyLowpassFilter();
+        });
+
+        applyHighpassButton.addEventListener('click', function() {
+            applyHighpassFilter();
+        });
+
+        applyIIRLowpassButton.addEventListener('click', function() {
+            applyIIRLowpassFilter();
+        });
+
+        applyIIRHighpassButton.addEventListener('click', function() {
+            applyIIRHighpassFilter();
+        });
+
+        function initializeAudio(arrayBuffer) {
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const fileReader = new FileReader();
-
-            fileReader.onload = function() {
-                audioContext.decodeAudioData(fileReader.result, function(buffer) {
-                    visualizeAudio(buffer); // Función para visualizar el audio decodificado
-                });
-            };
-
-            fileReader.readAsArrayBuffer(file);
-        });
-
-        // Evento para aplicar filtro Pasa Baja
-        document.getElementById('lowPassFilterButton').addEventListener('click', function() {
-            const cutoffFrequency = document.getElementById('cutoffFrequencyLow').value;
-            if (!lowPassFilter) {
-                lowPassFilter = audioContext.createBiquadFilter();
-                lowPassFilter.type = 'lowpass';
-                lowPassFilter.frequency.setValueAtTime(cutoffFrequency, audioContext.currentTime);
-
-                source.disconnect();
-                source.connect(lowPassFilter);
-                lowPassFilter.connect(analyser);
-                analyser.connect(audioContext.destination);
-            } else {
-                lowPassFilter.frequency.setValueAtTime(cutoffFrequency, audioContext.currentTime);
-            }
-        });
-
-        // Evento para aplicar filtro Pasa Alta
-        document.getElementById('highPassFilterButton').addEventListener('click', function() {
-            const cutoffFrequency = document.getElementById('cutoffFrequencyHigh').value;
-            if (!highPassFilter) {
-                highPassFilter = audioContext.createBiquadFilter();
-                highPassFilter.type = 'highpass';
-                highPassFilter.frequency.setValueAtTime(cutoffFrequency, audioContext.currentTime);
-
-                source.disconnect();
-                source.connect(highPassFilter);
-                highPassFilter.connect(analyser);
-                analyser.connect(audioContext.destination);
-            } else {
-                highPassFilter.frequency.setValueAtTime(cutoffFrequency, audioContext.currentTime);
-            }
-        });
-
-        // Evento para reproducir el audio
-        document.getElementById('playButton').addEventListener('click', function() {
-            if (source) {
-                source.start();
-            }
-        });
-
-        // Evento para detener la reproducción del audio
-        document.getElementById('stopButton').addEventListener('click', function() {
-            if (source) {
-                source.stop();
-                source = null;
-            }
-        });
-
-        // Función para resetear el contexto de audio
-        function resetAudioContext() {
-            if (audioContext) {
-                audioContext.close();
-            }
-            if (source) {
-                source.stop();
-            }
-            source = null;
-            lowPassFilter = null;
-            highPassFilter = null;
+            audioContext.decodeAudioData(arrayBuffer, function(buffer) {
+                audioBuffer = buffer;
+                playButton.disabled = false;
+                applyLowpassButton.disabled = false;
+                applyHighpassButton.disabled = false;
+                applyIIRLowpassButton.disabled = false;
+                applyIIRHighpassButton.disabled = false;
+            });
         }
 
-        // Función para visualizar el audio en los gráficos
-        function visualizeAudio(buffer) {
-            // Crear fuente de audio y conectar al analizador
+        function playAudio() {
             source = audioContext.createBufferSource();
-            source.buffer = buffer;
+            source.buffer = audioBuffer;
 
             analyser = audioContext.createAnalyser();
+            analyser.fftSize = 2048;
+
             source.connect(analyser);
             analyser.connect(audioContext.destination);
+            source.start();
 
-            analyser.fftSize = 2048;
+            playButton.disabled = true;
+            stopButton.disabled = false;
+
+            draw();
+        }
+
+        function stopAudio() {
+            if (source) {
+                source.stop();
+                cancelAnimationFrame(animationId);
+                playButton.disabled = false;
+                stopButton.disabled = true;
+            }
+        }
+
+        function applyLowpassFilter() {
+            if (!lowpassCutoffInput.value) return;
+            const cutoffFrequency = parseFloat(lowpassCutoffInput.value);
+
+            if (lowpassFilter) {
+                lowpassFilter.frequency.setValueAtTime(cutoffFrequency, audioContext.currentTime);
+            } else {
+                lowpassFilter = audioContext.createBiquadFilter();
+                lowpassFilter.type = 'lowpass';
+                lowpassFilter.frequency.setValueAtTime(cutoffFrequency, audioContext.currentTime);
+                connectFilter(lowpassFilter);
+            }
+        }
+
+        function applyHighpassFilter() {
+            if (!highpassCutoffInput.value) return;
+            const cutoffFrequency = parseFloat(highpassCutoffInput.value);
+
+            if (highpassFilter) {
+                highpassFilter.frequency.setValueAtTime(cutoffFrequency, audioContext.currentTime);
+            } else {
+                highpassFilter = audioContext.createBiquadFilter();
+                highpassFilter.type = 'highpass';
+                highpassFilter.frequency.setValueAtTime(cutoffFrequency, audioContext.currentTime);
+                connectFilter(highpassFilter);
+            }
+        }
+
+        function applyIIRLowpassFilter() {
+            if (!iirLowpassFrequencyInput.value) return;
+            const iirLowpassFrequency = parseFloat(iirLowpassFrequencyInput.value);
+            iirLowpassFilter = audioContext.createBiquadFilter();
+            iirLowpassFilter.type = 'lowpass';
+            iirLowpassFilter.frequency.setValueAtTime(iirLowpassFrequency, audioContext.currentTime);
+            connectFilter(iirLowpassFilter);
+        }
+
+        function applyIIRHighpassFilter() {
+            if (!iirHighpassFrequencyInput.value) return;
+            const iirHighpassFrequency = parseFloat(iirHighpassFrequencyInput.value);
+            iirHighpassFilter = audioContext.createBiquadFilter();
+            iirHighpassFilter.type = 'highpass';
+            iirHighpassFilter.frequency.setValueAtTime(iirHighpassFrequency, audioContext.currentTime);
+            connectFilter(iirHighpassFilter);
+        }
+
+        function connectFilter(filter) {
+            source.disconnect();
+            source.connect(filter);
+            filter.connect(analyser);
+            analyser.connect(audioContext.destination);
+        }
+
+        function draw() {
             const bufferLength = analyser.frequencyBinCount;
             const dataArray = new Uint8Array(bufferLength);
-            const timeDomainArray = new Uint8Array(analyser.fftSize);
+            const dataArrayFreq = new Uint8Array(bufferLength);
 
-            // Función para dibujar la forma de onda en el gráfico principal
-            const drawWaveform = () => {
-                analyser.getByteTimeDomainData(timeDomainArray);
+            waveformContext.clearRect(0, 0, waveformCanvas.width, waveformCanvas.height);
+            fftContext.clearRect(0, 0, fftCanvas.width, fftCanvas.height);
 
-                const waveformData = Array.from(timeDomainArray).map((value, index) => ({ x: index, y: value - 128 }));
-                waveformChart.data.labels = waveformData.map(point => point.x);
-                waveformChart.data.datasets[0].data = waveformData;
-                waveformChart.update();
+            function drawWaveform() {
+                analyser.getByteTimeDomainData(dataArray);
 
-                requestAnimationFrame(drawWaveform);
-            };
+                waveformContext.fillStyle = 'rgb(255, 255, 255)';
+                waveformContext.fillRect(0, 0, waveformCanvas.width, waveformCanvas.height);
 
-            // Función para dibujar el espectro de frecuencia en el gráfico principal
-            const drawSpectrum = () => {
-                analyser.getByteFrequencyData(dataArray);
+                waveformContext.lineWidth = 2;
+                waveformContext.strokeStyle = 'rgb(0, 0, 0)';
 
-                const spectrumData = Array.from(dataArray).map((value, index) => ({ x: index, y: value }));
-                spectrumChart.data.labels = spectrumData.map(point => point.x);
-                spectrumChart.data.datasets[0].data = spectrumData;
-                spectrumChart.update();
+                waveformContext.beginPath();
 
-                requestAnimationFrame(drawSpectrum);
-            };
+                const sliceWidth = waveformCanvas.width * 1.0 / bufferLength;
+                let x = 0;
 
-            // Función para dibujar la forma total del audio en el nuevo gráfico
-            const drawTotalWaveform = () => {
-                analyser.getByteTimeDomainData(timeDomainArray);
+                for (let i = 0; i < bufferLength; i++) {
+                    const v = dataArray[i] / 128.0;
+                    const y = v * waveformCanvas.height / 2;
 
-                const totalWaveformData = Array.from(timeDomainArray).map((value, index) => ({ x: index, y: value - 128 }));
-                totalWaveformChart.data.labels = totalWaveformData.map(point => point.x);
-                totalWaveformChart.data.datasets[0].data = totalWaveformData;
-                totalWaveformChart.update();
+                    if (i === 0) {
+                        waveformContext.moveTo(x, y);
+                    } else {
+                        waveformContext.lineTo(x, y);
+                    }
 
-                requestAnimationFrame(drawTotalWaveform);
-            };
+                    x += sliceWidth;
+                }
 
-            // Función para dibujar el espectro de toda la música en el nuevo gráfico
-            const drawTotalSpectrum = () => {
-                analyser.getByteFrequencyData(dataArray);
+                waveformContext.lineTo(waveformCanvas.width, waveformCanvas.height / 2);
+                waveformContext.stroke();
+            }
 
-                const totalSpectrumData = Array.from(dataArray).map((value, index) => ({ x: index, y: value }));
-                totalSpectrumChart.data.labels = totalSpectrumData.map(point => point.x);
-                totalSpectrumChart.data.datasets[0].data = totalSpectrumData;
-                totalSpectrumChart.update();
+            function drawFFT() {
+                analyser.getByteFrequencyData(dataArrayFreq);
 
-                requestAnimationFrame(drawTotalSpectrum);
-            };
+                fftContext.fillStyle = 'rgb(255, 255, 255)';
+                fftContext.fillRect(0, 0, fftCanvas.width, fftCanvas.height);
 
-            drawWaveform(); // Iniciar la visualización de la forma de onda en el gráfico principal
-            drawSpectrum(); // Iniciar la visualización del espectro de frecuencia en el gráfico principal
-            drawTotalWaveform(); // Iniciar la visualización de la forma total del audio en el nuevo gráfico
-            drawTotalSpectrum(); // Iniciar la visualización del espectro de toda la música en el nuevo gráfico
+                const barWidth = (fftCanvas.width / bufferLength) * 2.5;
+                let barHeight;
+                let x = 0;
+
+                for (let i = 0; i < bufferLength; i++) {
+                    barHeight = dataArrayFreq[i] / 2;
+
+                    fftContext.fillStyle = 'rgb(0, 0, 0)';
+                    fftContext.fillRect(x, fftCanvas.height - barHeight / 2, barWidth, barHeight);
+
+                    x += barWidth + 1;
+                }
+            }
+
+            function drawBoth() {
+                drawWaveform();
+                drawFFT();
+                animationId = requestAnimationFrame(drawBoth);
+            }
+
+            drawBoth();
         }
     </script>
 </body>
