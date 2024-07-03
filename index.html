@@ -4,8 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Visualización de Audio</title>
+    <!-- Incluimos la librería Chart.js para gráficos -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
+        /* Estilos CSS para el diseño de la página */
         .chart-container {
             display: flex;
             justify-content: space-around;
@@ -20,21 +22,26 @@
 </head>
 <body>
     <h1>Subir y Visualizar Audio WAV</h1>
+    <!-- Input para subir archivo de audio WAV -->
     <input type="file" id="audioFile" accept="audio/wav">
+    <!-- Controles para filtro Pasa Baja -->
     <div>
         <label for="cutoffFrequencyLow">Frecuencia de corte para Pasa Baja (Hz): </label>
         <input type="number" id="cutoffFrequencyLow" value="1000">
         <button id="lowPassFilterButton">Aplicar Filtro Pasa Baja</button>
     </div>
+    <!-- Controles para filtro Pasa Alta -->
     <div>
         <label for="cutoffFrequencyHigh">Frecuencia de corte para Pasa Alta (Hz): </label>
         <input type="number" id="cutoffFrequencyHigh" value="1000">
         <button id="highPassFilterButton">Aplicar Filtro Pasa Alta</button>
     </div>
+    <!-- Botones de reproducción y detención -->
     <div>
         <button id="playButton">Reproducir</button>
         <button id="stopButton">Detener</button>
     </div>
+    <!-- Contenedores para los gráficos -->
     <div class="chart-container">
         <div class="chart-column">
             <canvas id="waveformChart"></canvas>
@@ -43,11 +50,25 @@
             <canvas id="spectrumChart"></canvas>
         </div>
     </div>
+    <!-- Nuevas gráficas para la forma total del audio y el espectro de toda la música -->
+    <div class="chart-container">
+        <div class="chart-column">
+            <canvas id="totalWaveformChart"></canvas>
+        </div>
+        <div class="chart-column">
+            <canvas id="totalSpectrumChart"></canvas>
+        </div>
+    </div>
+
     <script>
+        // Declaración de variables para el contexto de audio y gráficos
         let audioContext, source, analyser, lowPassFilter, highPassFilter;
         const waveformCanvas = document.getElementById('waveformChart');
         const spectrumCanvas = document.getElementById('spectrumChart');
+        const totalWaveformCanvas = document.getElementById('totalWaveformChart');
+        const totalSpectrumCanvas = document.getElementById('totalSpectrumChart');
 
+        // Configuración del gráfico de forma de onda
         let waveformChart = new Chart(waveformCanvas, {
             type: 'line',
             data: {
@@ -55,7 +76,7 @@
                 datasets: [{
                     label: 'Forma de Onda ',
                     data: [],
-                    borderColor: 'rgba(0, 123, 255, 1)',
+                    borderColor: 'rgba(255, 0, 0, 1)',
                     borderWidth: 1,
                     pointRadius: 0
                 }]
@@ -68,6 +89,7 @@
             }
         });
 
+        // Configuración del gráfico de espectro de frecuencia
         let spectrumChart = new Chart(spectrumCanvas, {
             type: 'bar',
             data: {
@@ -87,24 +109,68 @@
             }
         });
 
+        // Configuración del gráfico de forma total del audio
+        let totalWaveformChart = new Chart(totalWaveformCanvas, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Forma Total del Audio',
+                    data: [],
+                    borderColor: 'rgba(255, 0, 0, 1)', // Color rojo
+                    borderWidth: 1,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                scales: {
+                    x: { display: false },
+                    y: { display: false }
+                }
+            }
+        });
+
+        // Configuración del gráfico de espectro de toda la música
+        let totalSpectrumChart = new Chart(totalSpectrumCanvas, {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Espectro de Toda la Música',
+                    data: [],
+                    backgroundColor: 'rgba(255, 0, 0, 1)', // Color rojo
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                scales: {
+                    x: { display: false },
+                    y: { display: false }
+                }
+            }
+        });
+
+        // Evento cuando se selecciona un archivo de audio
         document.getElementById('audioFile').addEventListener('change', function(event) {
             const file = event.target.files[0];
             if (!file) return;
 
             resetAudioContext();
 
+            // Creación de contexto de audio y decodificación del archivo
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
             const fileReader = new FileReader();
 
             fileReader.onload = function() {
                 audioContext.decodeAudioData(fileReader.result, function(buffer) {
-                    visualizeAudio(buffer);
+                    visualizeAudio(buffer); // Función para visualizar el audio decodificado
                 });
             };
 
             fileReader.readAsArrayBuffer(file);
         });
 
+        // Evento para aplicar filtro Pasa Baja
         document.getElementById('lowPassFilterButton').addEventListener('click', function() {
             const cutoffFrequency = document.getElementById('cutoffFrequencyLow').value;
             if (!lowPassFilter) {
@@ -121,6 +187,7 @@
             }
         });
 
+        // Evento para aplicar filtro Pasa Alta
         document.getElementById('highPassFilterButton').addEventListener('click', function() {
             const cutoffFrequency = document.getElementById('cutoffFrequencyHigh').value;
             if (!highPassFilter) {
@@ -137,12 +204,14 @@
             }
         });
 
+        // Evento para reproducir el audio
         document.getElementById('playButton').addEventListener('click', function() {
             if (source) {
                 source.start();
             }
         });
 
+        // Evento para detener la reproducción del audio
         document.getElementById('stopButton').addEventListener('click', function() {
             if (source) {
                 source.stop();
@@ -150,6 +219,7 @@
             }
         });
 
+        // Función para resetear el contexto de audio
         function resetAudioContext() {
             if (audioContext) {
                 audioContext.close();
@@ -162,7 +232,9 @@
             highPassFilter = null;
         }
 
+        // Función para visualizar el audio en los gráficos
         function visualizeAudio(buffer) {
+            // Crear fuente de audio y conectar al analizador
             source = audioContext.createBufferSource();
             source.buffer = buffer;
 
@@ -175,6 +247,7 @@
             const dataArray = new Uint8Array(bufferLength);
             const timeDomainArray = new Uint8Array(analyser.fftSize);
 
+            // Función para dibujar la forma de onda en el gráfico principal
             const drawWaveform = () => {
                 analyser.getByteTimeDomainData(timeDomainArray);
 
@@ -186,6 +259,7 @@
                 requestAnimationFrame(drawWaveform);
             };
 
+            // Función para dibujar el espectro de frecuencia en el gráfico principal
             const drawSpectrum = () => {
                 analyser.getByteFrequencyData(dataArray);
 
@@ -197,8 +271,34 @@
                 requestAnimationFrame(drawSpectrum);
             };
 
-            drawWaveform();
-            drawSpectrum();
+            // Función para dibujar la forma total del audio en el nuevo gráfico
+            const drawTotalWaveform = () => {
+                analyser.getByteTimeDomainData(timeDomainArray);
+
+                const totalWaveformData = Array.from(timeDomainArray).map((value, index) => ({ x: index, y: value - 128 }));
+                totalWaveformChart.data.labels = totalWaveformData.map(point => point.x);
+                totalWaveformChart.data.datasets[0].data = totalWaveformData;
+                totalWaveformChart.update();
+
+                requestAnimationFrame(drawTotalWaveform);
+            };
+
+            // Función para dibujar el espectro de toda la música en el nuevo gráfico
+            const drawTotalSpectrum = () => {
+                analyser.getByteFrequencyData(dataArray);
+
+                const totalSpectrumData = Array.from(dataArray).map((value, index) => ({ x: index, y: value }));
+                totalSpectrumChart.data.labels = totalSpectrumData.map(point => point.x);
+                totalSpectrumChart.data.datasets[0].data = totalSpectrumData;
+                totalSpectrumChart.update();
+
+                requestAnimationFrame(drawTotalSpectrum);
+            };
+
+            drawWaveform(); // Iniciar la visualización de la forma de onda en el gráfico principal
+            drawSpectrum(); // Iniciar la visualización del espectro de frecuencia en el gráfico principal
+            drawTotalWaveform(); // Iniciar la visualización de la forma total del audio en el nuevo gráfico
+            drawTotalSpectrum(); // Iniciar la visualización del espectro de toda la música en el nuevo gráfico
         }
     </script>
 </body>
